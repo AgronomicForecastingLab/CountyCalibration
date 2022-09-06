@@ -7,7 +7,7 @@ library(pSIMCampaignManager)
 setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
-county <- "lee"
+county <- "gallatin"
 sim_name <- paste0(state, "_", county)
 sim_years <- 2010:2020
 
@@ -15,12 +15,16 @@ Rot_Rasters <- readRDS(file.path(getwd(),"Rotations", paste0(sim_name, ".RDS")))
 
 fname <-  file.path(getwd(), "Simulations", sim_name, "Campaign.nc4")
 
-if(!dir.exists(file.path("Simulations", sim_name))) dir.create(file.path("Simulations", sim_name))
+# If it exists delete it
+if(dir.exists(file.path("Simulations", sim_name))) unlink(file.path("Simulations", sim_name) , recursive = TRUE)
+  
+dir.create(file.path("Simulations", sim_name))
+
 Sys.chmod(file.path("Simulations", sim_name), mode = "0777", use_umask = TRUE)
 
 
-Create_Empty_Campaign(lat=unique(raster::xyFromCell(Rot_Rasters[[1]], 1:length(Rot_Rasters[[1]]))[,2]),
-                      lon=unique(raster::xyFromCell(Rot_Rasters[[1]], 1:length(Rot_Rasters[[1]]))[,1]),
+Create_Empty_Campaign(lat=seq(37, 43.5, by=0.25),
+                      lon=seq(-86, -92.75, by=-0.25),
                       num_scen=1,
                       filename =fname)
 
@@ -233,35 +237,54 @@ GetCamp_VarMatrix(fname,'water_fraction_full')
 # plot(GetCamp_VarMatrix(fname,'residue_type')$Raster[[1]])
 
 
-######################################################################################################################
+#########################Creating a mask for the county
+county_boundry <- sf::st_as_sf( maps::map('county', state, fill=TRUE, plot =FALSE)) %>%
+  filter(grepl(county, ID)) %>%
+  dplyr::select(-ID) %>%
+  as(., "Spatial")
 
+il_mask <- raster(file.path(getwd(), "Templates", 'crop_mask_IL.nc'))
+county_mask2 <- mask(il_mask,county_boundry)
 
-
+writeRaster(
+  county_mask2,
+  file.path("Simulations", sim_name, 'mask.nc'),
+  overwrite = T,
+  format = 'CDF',
+  varname = 'mask',
+  varunit = 'boolean',
+  longname = 'cropland',
+  xname = 'lon',
+  yname = 'lat'
+)
 
 ######################################################################################################
 
-remove_var_campaign(fname, outfile="Campaign.nc4", varnames=c('myvar'))
+remove_var_campaign(fname, varnames=c('myvar'))
 
 ######################################################################################################
 #------------------------------- Creating the simulation
 ######################################################################################################
-
+#---- Param File
 tmp_param <- Read_param_template(file.path(getwd(), "Templates", "params.apsim.sample"))
 tmp_param$ref_year <- min(sim_years)%>% as.integer()
 tmp_param$num_years <- length(sim_years)%>% as.integer()
 tmp_param$scen_years <- length(sim_years)%>% as.integer()
 tmp_param$scens <- 60L
-tmp_param$tappinp$cultivarfile <- c(file.path(getwd(), "Templates", "Maize_template.xml"))
+#tmp_param$tappinp$cultivarfile <- c(file.path(getwd(), "Templates", "Maize_template.xml"))
 tmp_param$delta <- "2.5,2.5"
 tmp_param$soils <- '/pysims/data/soils/Soils'
 tmp_param$weather <- "/pysims/data/clim/NewMet/"
+tmp_param$checker$simgfile <- "../../mask.nc"
+tmp_param$Pre_run_command <- "Rscript ../../SoilFixer.R"
+tmp_param$Post_run_command <- "Rscript ../../Replace_sql_files.R"
 
 #Modifying the campaign json file 
 tmp_camp <- Read_Campaign_template(file.path(getwd(), "Templates", "exp_template.json"))  # This is different from one that was used in the rotation exp.
 tmp_camp$reporting_frequency <- "daily"
 
 # Point 1
-tmp_camp$crop_name <- c("maize", "soybean")
+tmp_camp$crop_name <- c("maize") 
 
 # Point2 
 tmp_camp$fertilizer$crop <- "Maize"
@@ -290,42 +313,56 @@ tmp_camp$management$events  <- sim_years %>%
       flatten()
 
 
+host <-
+  list(name = 'cc-login.campuscluster.illinois.edu',
+       user = 'hamzed',
+       tunnel = '~/tunnel/tunnel',
+       from= file.path(getwd(), "Simulations", sim_name),
+       to='/projects/aces/hamzed/psims/Data/sims')
+
+#debugonce(pSIMS_Site_Make)
 
 pSIMS_Site_Make(
-  dirname = "/home/trai/pSIMS/DA",
-  Project_name = "DA_maize_cal",
+  dirname = file.path(getwd(), "Simulations", sim_name),
+  Project_name = sim_name,
   Lat = 41.7125,
   Lon = -89.204167,
-  Campaign_Path = c('Campaign.nc4','EnKF.R'),
-  APSIM_Template_Path = "/home/trai/DA/template.apsim",
+  Tile = "0027/0046",
+  #Auxiliary_files = c(), # This would put files in the campign dir, as results all will be copied to all runs
+  Campaign_Path = c(file.path(getwd(), "Simulations",sim_name, 'Campaign.nc4'),
+                    file.path(getwd(), "Templates", 'EnKF.R')),
+  APSIM_Template_Path = file.path(getwd(), "Templates", 'template.apsim'),
   Param_template_Obj = tmp_param,
   Campaign_json_Obj = tmp_camp,
-  APSIM_Cultivar_Path = c(system.file("templates", "Maize_template.xml", package = "pSIMSSiteMaker"),
-                          system.file("templates", "Soybean_template.xml", package = "pSIMSSiteMaker")),
+  APSIM_Cultivar_Path = c(file.path(getwd(), "Templates", 'Maize_template.xml'),
+                          system.file("templates", "Soybean_template.xml", package = "pSIMSSiteMaker"),
+                          file.path("Simulations", sim_name, 'mask.nc'),
+                          file.path(getwd(), "Templates", 'SoilFixer.R'),
+                          file.path(getwd(), "Templates", 'Replace_sql_files.R')),
   # Point 3
   host = host,
   Bash_control = list(
-    pSIMS_Data_Path = "/pysims/data/sims/DA",
+    pSIMS_Data_Path = file.path("/pysims/data/sims/", sim_name),
     # No need to edit this
-    pSIMS_server_Path = "/projects/aces/tsrai/psims/Data",
+    pSIMS_server_Path = "/projects/aces/hamzed/psims/Data",
     pSIMS_Sing_Image = "/projects/aces/hamzed/psims/Data/SingularityImg/pSIMSFull.simg"
   )
 )
 
 
 ######################################################################################################
-# Transfering the files to lab server
-project_name <- "DA_maize_cal"
-remote.copy.from(host=host,
-                 src=paste0('/scratch/users/tsrai/',project_name),
-                 dst=file.path("/mnt/iccp_storage/trai/DA_Results/Lee"),
-                 delete = TRUE)
-
-######################################################################################################
-
-# Delete the empty directories
-setwd("/mnt/iccp_storage/trai/")
-
-library(TAF)
-rmdir('/mnt/iccp_storage/trai/DA_Results/Lee/DA_maize_cal',recursive=T)
-
+# # Transfering the files to lab server
+# project_name <- "DA_maize_cal"
+# remote.copy.from(host=host,
+#                  src=paste0('/scratch/users/tsrai/',project_name),
+#                  dst=file.path("/mnt/iccp_storage/trai/DA_Results/Lee"),
+#                  delete = TRUE)
+# 
+# ######################################################################################################
+# 
+# # Delete the empty directories
+# setwd("/mnt/iccp_storage/trai/")
+# 
+# library(TAF)
+# rmdir('/mnt/iccp_storage/trai/DA_Results/Lee/DA_maize_cal',recursive=T)
+# 
