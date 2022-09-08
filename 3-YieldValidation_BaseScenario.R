@@ -7,17 +7,20 @@ library(pSIMCampaignManager)
 setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
-county <- "gallatin"
+county <- "lee"
 sim_name <- paste0(state, "_", county)
 sim_years <- 2010:2020
 
-Rot_Rasters <- readRDS(file.path(getwd(),"Rotations", paste0(sim_name, ".RDS")))
+pSIMS_extent<-read.csv(system.file("Utils", "pSIMS_extents.csv", package = "pSIMSSiteMaker"))
 
+Rot_Rasters <- readRDS(file.path(getwd(),"Rotations", paste0(sim_name, ".RDS")))
 fname <-  file.path(getwd(), "Simulations", sim_name, "Campaign.nc4")
 
 # If it exists delete it
-if(dir.exists(file.path("Simulations", sim_name))) unlink(file.path("Simulations", sim_name) , recursive = TRUE)
-  
+if(dir.exists(file.path("Simulations", sim_name))) {
+  unlink(file.path("Simulations", sim_name) , recursive = TRUE)
+  }
+
 dir.create(file.path("Simulations", sim_name))
 
 Sys.chmod(file.path("Simulations", sim_name), mode = "0777", use_umask = TRUE)
@@ -28,69 +31,28 @@ Create_Empty_Campaign(lat=seq(37, 43.5, by=0.25),
                       num_scen=1,
                       filename =fname)
 
-params <- list (
-  pars = c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate"),
-  Upper.limit = c(500,65,30),
-  lower.limit = c(200,40,15),
-  unit=c('C/day','C/day','C/day')
-)
-
-# lenght.out.grid <- 5 # the space between points in each dimension in the parameter space
-# #----------------------------------- FULL grid
-# grid <- purrr::pmap(params[c(2,3)], function(Upper.limit, lower.limit) {
-#   seq(Upper.limit, lower.limit, length.out = lenght.out.grid)
-# }) %>%
-#   setNames(params$pars) %>%
-#   expand.grid()
-#----------------------------------------- LHC
-n.knot <- length(params$pars)*33
-
-grid.lhc <- pmap_dfc(params[c(1,2,3)], function(pars, Upper.limit, lower.limit, probs){
-  
-  probs <- gen_latin_nD(t(matrix(0:1, ncol = 1, nrow = 2)), n.knot)
-  
-  eval(parse(text = paste0("qunif", "(p,", lower.limit, ",", Upper.limit, ")")), list(p = probs)) %>%
-    as.data.frame()
-}) %>%
-  `colnames<-`(params$pars)
-
-grid <- grid.lhc
-
-# names(grid)[-8] %>%
-#   combn(2) %>%
-#   as.data.frame()%>%
-#   map(function(mm){
-#     #browser()
-#     plot(grid[,mm[1]], grid[,mm[2]])
-#   })
-#--------------------------------------------------- 
-saveRDS(grid, file=file.path("Simulations", sim_name,"grid_emulator_DA_leafparams.RDS"))
-#------------------------------------------
-
-Add_Scenario(fname, nrow(grid)-1)
+Add_Scenario(fname, 60)
 prop <- Inspect_Camp(fname)
 num_scen <- Get_Camp_dim(fname)$Scen
-count <- length(prop$Lat)*length(prop$Lon)
-Inspect_Camp(fname)
+#----------------Adding Cultivar
+hybrids <- c("B_120", "B_115", "B_110", "B_105", "B_100", "B_90",
+             "A_120", "A_115", "A_110", "A_105", "A_100", "A_90")
+new.values <-seq_along(prop$Scen) %>%
+  purrr::map(~matrix(sample(seq_along(hybrids)-1, prop$Count,TRUE), nrow = length(prop$Lat), ncol = length(prop$Lon)))
 
-for(param in params$pars) {
-  print(param)
-  new.values <-  seq_along(prop$Scen) %>%
-    purrr::map(~matrix(  grid[[param]][.x], nrow = length(prop$Lat), ncol = length(prop$Lon)))
-  
-  #debugonce(AddVar_Campaign)
-  AddVar_Campaign(fname,
-                  Variable = list(Name=param,
-                                  Unit=params$unit[which(params$pars==param)],
-                                  missingValue=-99,
-                                  value= new.values,
-                                  longname="",
-                                  prec="float"
-                  ),
-                  attr = list('long_name',"")
-  )
-}
+AddVar_Campaign(fname,
+                Variable = list(Name='cul_id',
+                                Unit='Mapping',
+                                missingValue=-99,
+                                value= new.values,
+                                longname="",
+                                prec="integer"
+                ),
+                attr = list('long_name',paste(hybrids, collapse = ",")))
 
+Edit_mapping_var (fname, 'cul_id' , 'long_name', paste(hybrids, collapse = ","))
+
+GetCamp_VarMatrix(fname,'cul_id')
 #----------------Adding met
 new.values <-seq_along(prop$Scen) %>%
   purrr::map(~matrix(sample(c(1:9), prop$Count,TRUE), nrow = length(prop$Lat), ncol = length(prop$Lon)))
@@ -101,7 +63,7 @@ AddVar_Campaign(fname,
                                 missingValue=-99,
                                 value= new.values,
                                 longname="",
-                                prec="float"
+                                prec="integer"
                 ),
                 attr = list('long_name',"met00000.met,met00001.met,met00002.met,met00003.met,
                             met00004.met,met00005.met,met00006.met,met00007.met,met00008.met,
@@ -149,25 +111,25 @@ for (j in 1:num_years) {
   
   
   AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j-1),
-                                                   Unit='Mapping',
-                                                   missingValue=-99,
-                                                   prec='float',
-                                                    longname="",
-                                                   value= new.values))
+                                        Unit='Mapping',
+                                        missingValue=-99,
+                                        prec='float',
+                                        longname="",
+                                        value= new.values))
   
   Edit_mapping_var(fname, paste0('date_',4*j-1), 'long_name', paste(gsub('-','',
-                                                                                    as.Date(1:50,origin = paste0(j+min(sim_years)-1,'-04-29'))),
-                                                                               collapse = ','))
+                                                                         as.Date(1:50,origin = paste0(j+min(sim_years)-1,'-04-29'))),
+                                                                    collapse = ','))
   
   AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j-2),
-                                                   Unit='Mapping',
-                                                   missingValue=-99,
-                                                   prec='float',
-                                                   longname="",
-                                                   value= new.values))
+                                        Unit='Mapping',
+                                        missingValue=-99,
+                                        prec='float',
+                                        longname="",
+                                        value= new.values))
   Edit_mapping_var(fname, paste0('date_',4*j-2), 'long_name', paste(gsub('-','',
-                                                                                    as.Date(1:50,origin = paste0(j+min(sim_years)-1,'-04-29'))),
-                                                                               collapse = ','))
+                                                                         as.Date(1:50,origin = paste0(j+min(sim_years)-1,'-04-29'))),
+                                                                    collapse = ','))
   
   print(j)
   
@@ -247,7 +209,7 @@ il_mask <- raster(file.path(getwd(), "Templates", 'crop_mask_IL.nc'))
 county_mask2 <- mask(il_mask,county_boundry)
 
 writeRaster(
-  county_mask2,
+  trim(county_mask2),
   file.path("Simulations", sim_name, 'mask.nc'),
   overwrite = T,
   format = 'CDF',
@@ -261,7 +223,7 @@ writeRaster(
 tile_number <- pSIMS_extent %>%
   filter(ymin <= extent( trim(county_mask2))[3], ymax>= extent( trim(county_mask2))[4], 
          xmin <= extent( trim(county_mask2))[1], xmax>= extent( trim(county_mask2))[2]
-  ) %>%
+         ) %>%
   pull(name)
 ######################################################################################################
 
@@ -275,8 +237,9 @@ tmp_param <- Read_param_template(file.path(getwd(), "Templates", "params.apsim.s
 tmp_param$ref_year <- min(sim_years)%>% as.integer()
 tmp_param$num_years <- length(sim_years)%>% as.integer()
 tmp_param$scen_years <- length(sim_years)%>% as.integer()
-tmp_param$scens <- 60L
-#tmp_param$tappinp$cultivarfile <- c(file.path(getwd(), "Templates", "Maize_template.xml"))
+tmp_param$scens <-60L
+tmp_param$tappinp$cultivarfile <- "Maize_Default.xml"
+tmp_param$tappinp$templatefile <- "template_Default.apsim"
 tmp_param$delta <- "2.5,2.5"
 tmp_param$soils <- '/pysims/data/soils/Soils'
 tmp_param$weather <- "/pysims/data/clim/NewMet/"
@@ -285,7 +248,7 @@ tmp_param$Pre_run_command <- "Rscript ../../SoilFixer.R"
 tmp_param$Post_run_command <- "Rscript ../../Replace_sql_files.R"
 
 #Modifying the campaign json file 
-tmp_camp <- Read_Campaign_template(file.path(getwd(), "Templates", "exp_template.json"))  # This is different from one that was used in the rotation exp.
+tmp_camp <- Read_Campaign_template(file.path(getwd(), "Templates", "exp_template_Default.json"))  # This is different from one that was used in the rotation exp.
 tmp_camp$reporting_frequency <- "daily"
 
 # Point 1
@@ -305,7 +268,7 @@ tmp_camp$management$events  <- sim_years %>%
       PlantingDate = as.Date(paste0(syear, "-05-03")),
       HarvestDate = as.Date(paste0(syear, "-10-16")),
       Crop = "maize",
-      Cultivar = "?",
+      Cultivar = "B_105",
       # psims will ensemblize the cultivar
       Population = "8",
       Depth = "40",
@@ -315,7 +278,7 @@ tmp_camp$management$events  <- sim_years %>%
       fertdepth = "40"
     ) 
   }) %>%
-      flatten()
+  purrr::flatten()
 
 
 host <-
@@ -336,10 +299,10 @@ pSIMS_Site_Make(
   #Auxiliary_files = c(), # This would put files in the campign dir, as results all will be copied to all runs
   Campaign_Path = c(file.path(getwd(), "Simulations",sim_name, 'Campaign.nc4'),
                     file.path(getwd(), "Templates", 'EnKF.R')),
-  APSIM_Template_Path = file.path(getwd(), "Templates", 'template.apsim'),
+  APSIM_Template_Path = file.path(getwd(), "Templates", 'template_Default.apsim'),
   Param_template_Obj = tmp_param,
   Campaign_json_Obj = tmp_camp,
-  APSIM_Cultivar_Path = c(file.path(getwd(), "Templates", 'Maize_template.xml'),
+  APSIM_Cultivar_Path = c(file.path(getwd(), "Templates", 'Maize_Default.xml'),
                           system.file("templates", "Soybean_template.xml", package = "pSIMSSiteMaker"),
                           file.path("Simulations", sim_name, 'mask.nc'),
                           file.path(getwd(), "Templates", 'SoilFixer.R'),
@@ -354,20 +317,3 @@ pSIMS_Site_Make(
   )
 )
 
-
-######################################################################################################
-# # Transfering the files to lab server
-# project_name <- "DA_maize_cal"
-# remote.copy.from(host=host,
-#                  src=paste0('/scratch/users/tsrai/',project_name),
-#                  dst=file.path("/mnt/iccp_storage/trai/DA_Results/Lee"),
-#                  delete = TRUE)
-# 
-# ######################################################################################################
-# 
-# # Delete the empty directories
-# setwd("/mnt/iccp_storage/trai/")
-# 
-# library(TAF)
-# rmdir('/mnt/iccp_storage/trai/DA_Results/Lee/DA_maize_cal',recursive=T)
-# 

@@ -16,6 +16,8 @@ host <-
        tunnel = '~/tunnel/tunnel',
        from=paste0('/home/hamzed/pSIMS/'),
        to='/projects/aces/hamzed/psims/Data')
+
+outdir <- '/Outputs'
 #-----------------------------------------------------------------------------------
 #-------------------------------------------- Find the runs/dirs that starts with illinois and has sqlite3 files
 #-----------------------------------------------------------------------------------
@@ -63,14 +65,14 @@ walk(names(Finished_runs)[c(6)], function(.xx){
 
   paths_withruns_zip <- remote.execute.cmd(host,
                                            paste0('find ',.xx,' -type f -name "*_RTM.zip"'))
-  dir.create(file.path(getwd(),'/Outputs', basename(.xx)))
+  dir.create(file.path(getwd(),outdir, basename(.xx)))
   
   #Bring them back
   walk(paths_withruns_zip, function(ss){
 
     remote.copy.from(host=host,
                      src=ss,
-                     dst=file.path(getwd(), '/Outputs', basename(.xx)),
+                     dst=file.path(getwd(), outdir, basename(.xx)),
                      delete = TRUE)
   })
   
@@ -89,7 +91,7 @@ walk(names(Finished_runs)[c(6)], function(.xx){
     
     remote.copy.from(host=host,
                      src=ss,
-                     dst=file.path(getwd(),'/Outputs', basename(.xx), gsub("/","_",dirname(gsub(.xx,"",ss))%>%substr(2, 20))),
+                     dst=file.path(getwd(),outdir, basename(.xx), gsub("/","_",dirname(gsub(.xx,"",ss))%>%substr(2, 20))),
                      delete = TRUE)
   })
 })
