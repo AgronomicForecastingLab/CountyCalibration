@@ -9,4 +9,6 @@ Using `0-County_Calibration_Maize` we can specify a set of APSIM parameters and 
 #### 4) Using the calibrated parameters to run SDA over a county
 
 
-#### Before running any large simulation, one needs to double check few different things. 1)Each pixel needs to follow it's common rotation extracted from CDL. 2) Each pixel needs to have correct values for calibrated crop parameters and planting date
+#### Before running any large simulations, one needs to double check few different things:
+1)Each pixel needs to follow it's common rotation extracted from CDL. 
+2) Each pixel needs to have correct values for calibrated crop parameters and planting date
