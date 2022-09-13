@@ -6,6 +6,7 @@ library(purrr)
 library(furrr)
 library(jsonlite)
 library(phenex)
+library(rlang)
 plan(multisession)
 sqlite.driver <- dbDriver("SQLite")
 setwd("/mnt/iccp_storage/Regional_Calibration/")
@@ -17,7 +18,8 @@ host <-
        from=paste0('/home/hamzed/pSIMS/'),
        to='/projects/aces/hamzed/psims/Data')
 
-outdir <- '/Outputs'
+outdir <- '/YieldOutputs'
+Var <- 'NDVI'
 #-----------------------------------------------------------------------------------
 #-------------------------------------------- Find the runs/dirs that starts with illinois and has sqlite3 files
 #-----------------------------------------------------------------------------------
@@ -34,7 +36,10 @@ Finished_runs
 #-----------------------------------------------------------------------------------
 # Remove the reduandant dirs
 # find . -type d -empty -delete
-walk(names(Finished_runs)[c(6)], function(.x){
+walk(names(Finished_runs)[c(2, 4, 6, 8, 10, 12)], function(.x){
+  
+  #Delete empty dirs
+  pSIMSSiteMaker::remote.execute.cmd(host, paste0('find  ', .x ,' -type d -empty -delete'))
 
   subdirs <- pSIMSSiteMaker::remote.execute.cmd(host, paste0('find  ', .x ,' -type d ')) %>%
    discard(function(xx){
@@ -60,11 +65,12 @@ walk(names(Finished_runs)[c(6)], function(.x){
 #-----------------------------------------------------------------------------------
 #---- find the zip files and bring them back---------
 #-----------------------------------------------------------------------------------
-walk(names(Finished_runs)[c(6)], function(.xx){
+walk(names(Finished_runs)[c( 2, 4, 6, 8, 10, 12)], function(.xx){
   # 
 
   paths_withruns_zip <- remote.execute.cmd(host,
-                                           paste0('find ',.xx,' -type f -name "*_RTM.zip"'))
+                                           paste0('find ',.xx,' -type f -name "*.zip"'))
+  
   dir.create(file.path(getwd(),outdir, basename(.xx)))
   
   #Bring them back
@@ -76,36 +82,35 @@ walk(names(Finished_runs)[c(6)], function(.xx){
                      delete = TRUE)
   })
   
-
-  list.files(paste0(getwd(), "/Outputs/", basename(.xx)),".zip", full.names = TRUE, recursive = TRUE)%>%
+#---------------
+#--- UNZIP all the outputs
+#----------------
+  list.files(paste0(getwd(), paste0(outdir, "/"), basename(.xx)),".zip", full.names = TRUE, recursive = TRUE)%>%
     walk(~ unzip(.x, junkpaths=TRUE,
-                 exdir = file.path(getwd(),"/Outputs", basename(.xx), gsub("_RTM","", tools::file_path_sans_ext(basename(.x)))%>%substr(2, 20))
+                 exdir = file.path(getwd(),outdir, basename(.xx), gsub("_RTM","", tools::file_path_sans_ext(basename(.x)))%>%substr(2, 20))
                                    )
                  )
- 
-  paths_withruns_json<- remote.execute.cmd(host,
-                                           paste0('find ',.xx,' -type f -name "experiment.json"'))
+
   
-  #Bring them back
-  walk(paths_withruns_json, function(ss){
+  #Bring experiment .json back
+  walk(dirname(paths_withruns_zip), function(ss){
     
     remote.copy.from(host=host,
-                     src=ss,
-                     dst=file.path(getwd(),outdir, basename(.xx), gsub("/","_",dirname(gsub(.xx,"",ss))%>%substr(2, 20))),
+                     src=file.path(ss, "experiment.json"),
+                     dst=file.path(getwd(),outdir, basename(.xx), gsub("/","_",gsub(.xx,"",ss)) %>% substr(2, 20),
+                                   "experiment.json"),
                      delete = TRUE)
   })
 })
 
 
-#-----------------------------------------------------------------------------------
-#------------------------------------------ UNZIP all the outputs
-#-----------------------------------------------------------------------------------
 
-list.files(paste0(getwd(), "/Outputs/"),".zip", full.names = TRUE, recursive = TRUE) %>%
+
+list.files(paste0(getwd(), paste0(outdir, "/")),".zip", full.names = TRUE, recursive = TRUE) %>%
   walk(~ unlink(.x))
 #------------------------------------------------ AGGregate SQL files from ens to pixel level
 #-------------------------------------- Read SQLites
-list.dirs(file.path(getwd(), "Outputs"), recursive = FALSE) [3]%>%
+list.dirs(file.path(getwd(), outdir), recursive = FALSE)%>%
   walk(function(path.sim){
 
     print(path.sim)
@@ -118,23 +123,24 @@ list.dirs(file.path(getwd(), "Outputs"), recursive = FALSE) [3]%>%
           future_map_dfr(function(sqlfile){
             db <- dbConnect(sqlite.driver, dbname = sqlfile)
 
-            mytable <- dbReadTable(db,"Outputs") %>%
+            mytable <- dbReadTable(db, "Outputs") %>%
               dplyr::select(lon=longitude, lat=latitude, sim, yield, NDVI, CropName, day , year) %>%
               mutate(ens = basename(sqlfile),
-                     Pixel = gsub('/','_',gsub('/projects/aces/hamzed/psims/Data/sims/|illinois|lee|moultrie','',sim))
+                     Pixel = gsub('/','_',gsub('/projects/aces/hamzed/psims/Data/sims/|illinois|lee|moultrie|gallatin','',sim))
               )%>%
               dplyr::select(-sim)
 
           }, .progress=TRUE)
+ 
 
         out <- output %>%
           group_by(year, ens, Pixel) %>%
-          slice_max(order_by=c(NDVI)) %>%
+          slice_max(order_by=(!!sym(Var)), with_ties = FALSE) %>%
           mutate(lat = as.numeric(lat),
                  lon = as.numeric(lon))
         
 
-        saveRDS(out,file.path(final.path, paste0(basename(final.path),'_output.RDS')))
+        saveRDS(out,file.path(final.path, paste0(basename(final.path),'NDVI_output.RDS')))
         gc()
       })
 

@@ -8,8 +8,8 @@ setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
 county <- "lee"
-sim_name <- paste0(state, "_", county,"_Validation")
-sim_years <- 2010:2020
+sim_name <- paste0(state, "_", county,"_SDA")
+sim_years <- 2005:2020
 
 
 pSIMS_extent<-read.csv(system.file("Utils", "pSIMS_extents.csv", package = "pSIMSSiteMaker"))
@@ -271,9 +271,9 @@ tmp_param <- Read_param_template(file.path(getwd(), "Templates", "params.apsim.s
 tmp_param$ref_year <- min(sim_years)%>% as.integer()
 tmp_param$num_years <- length(sim_years)%>% as.integer()
 tmp_param$scen_years <- length(sim_years)%>% as.integer()
-tmp_param$scens <- 60L
+tmp_param$scens <- 5L
 #tmp_param$tappinp$cultivarfile <- c(file.path(getwd(), "Templates", "Maize_template.xml"))
-tmp_param$delta <- "2.5,2.5"
+tmp_param$delta <- "50,50"
 tmp_param$soils <- '/pysims/data/soils/Soils'
 tmp_param$weather <- "/pysims/data/clim/NewMet/"
 tmp_param$checker$simgfile <- "../../mask.nc"
@@ -331,8 +331,9 @@ pSIMS_Site_Make(
   Tile = tile_number,
   #Auxiliary_files = c(), # This would put files in the campign dir, as results all will be copied to all runs
   Campaign_Path = c(file.path(getwd(), "Simulations",sim_name, 'Campaign.nc4'),
-                    file.path(getwd(), "Templates", 'EnKF.R')),
-  APSIM_Template_Path = file.path(getwd(), "Templates", 'template.apsim'),
+                    file.path(getwd(), "Templates", 'EnKF.R'),
+                    file.path(getwd(), "Templates", 'MakeObs_ESA_CCI.R')),
+  APSIM_Template_Path = file.path(getwd(), "Templates", 'template_SDA.apsim'),
   Param_template_Obj = tmp_param,
   Campaign_json_Obj = tmp_camp,
   APSIM_Cultivar_Path = c(file.path(getwd(), "Templates", 'Maize_template.xml'),

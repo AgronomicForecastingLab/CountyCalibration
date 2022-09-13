@@ -7,81 +7,73 @@ library(pSIMCampaignManager)
 setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
-county <- "kendall"
+county <- "lee"
 sim_name <- paste0(state, "_", county)
-sim_years <- 2010:2020
+sim_years <- 2005:2020
 
-Rot_Rasters <- readRDS(file.path(getwd(),"Rotations", paste0(sim_name, ".RDS")))
+
 pSIMS_extent<-read.csv(system.file("Utils", "pSIMS_extents.csv", package = "pSIMSSiteMaker"))
 fname <-  file.path(getwd(), "Simulations", sim_name, "Campaign.nc4")
 
 # If it exists delete it
 if(dir.exists(file.path("Simulations", sim_name))) unlink(file.path("Simulations", sim_name) , recursive = TRUE)
-  
+
 dir.create(file.path("Simulations", sim_name))
 
 Sys.chmod(file.path("Simulations", sim_name), mode = "0777", use_umask = TRUE)
+#--------------------------------------------------------------------------------------------------
+#------------------------------- Start creating the Campaign 
+#-------------------------------------------------------------------------------------------------
+#--- ------------Add calibrated parameters to the campaign
+Optim_res <- readRDS(file.path(getwd(),"Outputs", paste0("illinois_",county, "/Optim_results.RDS")))
+# get the objects we need from the optimization results
+comparison <- Optim_res[[1]]
+params <-  Optim_res[[5]]
 
 
-Create_Empty_Campaign(lat=seq(37, 43.5, by=0.25),
-                      lon=seq(-86, -92.75, by=-0.25),
+Allparams.df <- params %>%
+  mutate(tt_emerg_to_endjuv = as.numeric(tt_emerg_to_endjuv),
+         leaf_app_rate1 = as.numeric(leaf_app_rate1),
+         leaf_init_rate = as.numeric(leaf_init_rate), 
+         pdate= as.numeric(pdate)) %>%
+  tidyr::gather(Year, Yeareff, -pixel, -pdate, -tt_emerg_to_endjuv, -leaf_app_rate1, -leaf_init_rate) %>%
+  split(.$Year) %>%
+  map_dfr(function(one.year.param){
+    
+    comparison %>%
+      ungroup() %>%
+      select(Pixel, lat, lon) %>%
+      distinct(Pixel, .keep_all = TRUE) %>%
+      left_join(one.year.param %>% 
+                  rename(Pixel=pixel), by='Pixel') %>%
+      mutate(pdate = pdate + as.numeric(Yeareff))
+    
+  })
+
+crop.params <- Allparams.df %>%
+  filter(Year == Allparams.df$Year[1])
+#------------------------------------------
+Create_Empty_Campaign(lat=unique(crop.params$lat),
+                      lon=unique(crop.params$lon),
                       num_scen=1,
                       filename =fname)
 
-params <- list (
-  pars = c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate"),
-  Upper.limit = c(500,65,30),
-  lower.limit = c(200,40,15),
-  unit=c('C/day','C/day','C/day')
-)
-
-# lenght.out.grid <- 5 # the space between points in each dimension in the parameter space
-# #----------------------------------- FULL grid
-# grid <- purrr::pmap(params[c(2,3)], function(Upper.limit, lower.limit) {
-#   seq(Upper.limit, lower.limit, length.out = lenght.out.grid)
-# }) %>%
-#   setNames(params$pars) %>%
-#   expand.grid()
-#----------------------------------------- LHC
-n.knot <- length(params$pars)*33
-
-grid.lhc <- pmap_dfc(params[c(1,2,3)], function(pars, Upper.limit, lower.limit, probs){
-  
-  probs <- gen_latin_nD(t(matrix(0:1, ncol = 1, nrow = 2)), n.knot)
-  
-  eval(parse(text = paste0("qunif", "(p,", lower.limit, ",", Upper.limit, ")")), list(p = probs)) %>%
-    as.data.frame()
-}) %>%
-  `colnames<-`(params$pars)
-
-grid <- grid.lhc
-
-# names(grid)[-8] %>%
-#   combn(2) %>%
-#   as.data.frame()%>%
-#   map(function(mm){
-#     #browser()
-#     plot(grid[,mm[1]], grid[,mm[2]])
-#   })
-#--------------------------------------------------- 
-saveRDS(grid, file=file.path("Simulations", sim_name,"grid_emulator_DA_leafparams.RDS"))
-#------------------------------------------
-
-Add_Scenario(fname, nrow(grid)-1)
+Add_Scenario(fname, 59)
 prop <- Inspect_Camp(fname)
 num_scen <- Get_Camp_dim(fname)$Scen
 count <- length(prop$Lat)*length(prop$Lon)
 Inspect_Camp(fname)
 
-for(param in params$pars) {
+for(param in c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate")) {
   print(param)
-  new.values <-  seq_along(prop$Scen) %>%
-    purrr::map(~matrix(  grid[[param]][.x], nrow = length(prop$Lat), ncol = length(prop$Lon)))
   
-  #debugonce(AddVar_Campaign)
+  mat.par <-  rasterFromXYZ(crop.params[,c('lon','lat',param)]) %>% as.matrix()
+
+  new.values <-  seq_along(prop$Scen) %>% purrr::map(~mat.par %>% t )
+
   AddVar_Campaign(fname,
                   Variable = list(Name=param,
-                                  Unit=params$unit[which(params$pars==param)],
+                                  Unit="C/day",
                                   missingValue=-99,
                                   value= new.values,
                                   longname="",
@@ -113,7 +105,7 @@ Edit_mapping_var (fname, 'file' , 'long_name', "met00000.met,met00001.met,met000
 ###### Fertilizer Amount
 num_years <- length(sim_years)
 
-GetCamp_VarMatrix(fname,'file')
+
 
 for (j in 1:num_years) {
   
@@ -135,46 +127,50 @@ for (j in 1:num_years) {
 }
 
 
-plot(GetCamp_VarMatrix(fname,'feamn_2')$Raster[[5]])
 
 ############################################################################################
 ###### Planting Date and fertilizer date
 
 
 
+
 for (j in 1:num_years) {
   
-  new.values <-seq_along(prop$Scen) %>%
-    purrr::map(~matrix(sample(1:50,1,T), nrow = length(prop$Lat), ncol = length(prop$Lon)))
+  pdate.param <- Allparams.df %>%
+    filter(Year == sim_years[j])
   
+  mat.par <-  rasterFromXYZ(pdate.param[,c('lon','lat','pdate')]) %>% as.matrix() %>% round()
+  
+  inds <- matrix(1:(nrow(mat.par)* ncol(mat.par)), 
+                 ncol= ncol(mat.par), nrow=  nrow(mat.par), byrow = FALSE)
+  
+
+  new.values <-seq_along(prop$Scen) %>% purrr::map(~inds %>% t )
   
   AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j-1),
-                                                   Unit='Mapping',
-                                                   missingValue=-99,
-                                                   prec='float',
-                                                    longname="",
-                                                   value= new.values))
+                                        Unit='Mapping',
+                                        missingValue=-99,
+                                        prec='float',
+                                        longname="",
+                                        value= new.values))
   
   Edit_mapping_var(fname, paste0('date_',4*j-1), 'long_name', paste(gsub('-','',
-                                                                                    as.Date(1:50,origin = paste0(j+min(sim_years)-1,'-04-29'))),
-                                                                               collapse = ','))
+                                                                         as.Date(mat.par %>% as.numeric(),origin = paste0(sim_years[j]-1,'-12-31'))),
+                                                                    collapse = ','))
   
   AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j-2),
-                                                   Unit='Mapping',
-                                                   missingValue=-99,
-                                                   prec='float',
-                                                   longname="",
-                                                   value= new.values))
+                                        Unit='Mapping',
+                                        missingValue=-99,
+                                        prec='float',
+                                        longname="",
+                                        value= new.values))
   Edit_mapping_var(fname, paste0('date_',4*j-2), 'long_name', paste(gsub('-','',
-                                                                                    as.Date(1:50,origin = paste0(j+min(sim_years)-1,'-04-29'))),
-                                                                               collapse = ','))
+                                                                         as.Date(mat.par %>% as.numeric(),origin = paste0(sim_years[j]-1,'-12-31'))),
+                                                                    collapse = ','))
   
   print(j)
   
 }
-
-plot(GetCamp_VarMatrix(fname,'date_2')$Raster[[5]])
-GetCamp_VarMatrix(fname,'date_2')[[1]][,,8]
 
 
 ############################################################################################
@@ -195,7 +191,7 @@ AddVar_Campaign(fname,
                 attr = list('long_name',"")
 )
 
-GetCamp_VarMatrix(fname,'water_fraction_full')
+
 
 ############################################################################################
 ######## Residue Weight
@@ -315,7 +311,7 @@ tmp_camp$management$events  <- sim_years %>%
       fertdepth = "40"
     ) 
   }) %>%
-      flatten()
+  flatten()
 
 
 host <-

@@ -5,9 +5,11 @@ library(purrr)
 library(lubridate)
 library(rtop)
 library(tidyr)
+library(furrr)
+plan(multisession)
 
-list.dirs("Outputs", recursive = FALSE)[2:3] %>%
-  map(function(ss){
+list.dirs("Outputs", recursive = FALSE) %>%
+  future_map(function(ss){
     print(ss)
    
     county <- strsplit(basename(ss), "_")[[1]][2]
@@ -99,26 +101,18 @@ list.dirs("Outputs", recursive = FALSE)[2:3] %>%
         
         
         data$PDOY <- data$PDOY +  prms[5:15]
-        
-        rmse_date <- (sqrt(sum((mgcv::predict.bam(date_emulator[[i]], newdata = data)-data$date_obs)^2,
-                               na.rm=TRUE)/length(data$date_obs)))/
-          mean(data$date_obs, na.rm=TRUE)*100
-        
-        rmse_NDVI <- (sqrt(sum((mgcv::predict.bam(ndvi_emulator[[i]], newdata = data)-data$NewNDVI)^2, 
-                               na.rm=TRUE)/length(data$NewNDVI)))/
-          mean(data$NewNDVI,  na.rm=TRUE)*100
-        
-       
-        rmse <- rmse_date + rmse_NDVI
-        rmse 
-      }
     
+        
+        (1-hydroGOF::KGE(mgcv::predict.bam(date_emulator[[i]], newdata = data)%>% as.numeric(), data$date_obs, na.rm=TRUE)) +
+          (1- hydroGOF::KGE(mgcv::predict.bam(ndvi_emulator[[i]], newdata = data)%>% as.numeric(), data$NewNDVI, na.rm=TRUE))
+      }
+
       pars <- sceua(obj_fun,
                     pars = c(130,270,45,20, rep(0, 11)),
                     lower = c(120,200,40,15, rep(-20, 11)),
                     upper = c(170,500,65,30, rep(20, 11))
       )
-      
+
       params <- rbind(params, c(as.character(obs_data$Pixel%>%unique())[i],round(pars$par,2)))
       
       print(i)
@@ -130,5 +124,5 @@ list.dirs("Outputs", recursive = FALSE)[2:3] %>%
                           '2016','2017','2018','2019','2020')
     
 
-    saveRDS(list(comparison, obs_data, date_emulator, ndvi_emulator, params), file.path(ss, "Optim_results.RDS"))
-})
+    saveRDS(list(comparison, obs_data, date_emulator, ndvi_emulator, params), file.path(ss, "Optim_results_KGE.RDS"))
+}, .progress = TRUE)
