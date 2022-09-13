@@ -10,6 +10,7 @@ state <- "illinois"
 county <- "lee"
 sim_name <- paste0(state, "_", county,"_SDA")
 sim_years <- 2005:2020
+num_years <- length(sim_years)
 
 
 pSIMS_extent<-read.csv(system.file("Utils", "pSIMS_extents.csv", package = "pSIMSSiteMaker"))
@@ -17,10 +18,10 @@ fname <-  file.path(getwd(), "Simulations", sim_name, "Campaign.nc4")
 
 # If it exists delete it
 if(dir.exists(file.path("Simulations", sim_name))) unlink(file.path("Simulations", sim_name) , recursive = TRUE)
-
 dir.create(file.path("Simulations", sim_name))
-
 Sys.chmod(file.path("Simulations", sim_name), mode = "0777", use_umask = TRUE)
+
+Rot_Rasters <- readRDS(file.path(getwd(),"Rotations", paste0(paste0(state, "_", county), ".RDS")))
 #--------------------------------------------------------------------------------------------------
 #------------------------------- Start creating the Campaign 
 #-------------------------------------------------------------------------------------------------
@@ -52,7 +53,7 @@ Allparams.df <- params %>%
 
 crop.params <- Allparams.df %>%
   filter(Year == Allparams.df$Year[1])
-#------------------------------------------
+#------------------------------------------ Adding the paramters to the Campaign
 Create_Empty_Campaign(lat=unique(crop.params$lat),
                       lon=unique(crop.params$lon),
                       num_scen=1,
@@ -83,7 +84,114 @@ for(param in c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate")) {
   )
 }
 
-#----------------Adding met
+############################################################################################
+######## Crop Rotation
+for (j in 6:num_years) {
+  
+  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable[raster::values(MyVariable)==0] <- 2
+  MyVariable[raster::values(MyVariable)==-1] <- 3
+  MyVariable[is.na(MyVariable)] <- 3
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",
+                                                                      MyVariable)[[1]])
+  
+  AddVar_Campaign("MyCampaign.nc4",
+                  Variable = list(Name=paste0('crid_',j*3),
+                                  Unit='Mapping',
+                                  missingValue=-99,
+                                  prec = 'float',
+                                  value= new.values
+                  )
+  )
+  
+  Edit_mapping_var("MyCampaign.nc4", paste0('crid_',j*3) , 'long_name', "maize,soybean,fallow")
+  
+  AddVar_Campaign("MyCampaign.nc4",
+                  Variable = list(Name=paste0('crid_',j*3-1),
+                                  Unit='Mapping',
+                                  missingValue=-99,
+                                  prec = 'float',
+                                  value= new.values
+                  )
+  )
+  
+  Edit_mapping_var("MyCampaign.nc4", paste0('crid_',j*3-1) , 'long_name', "maize,soybean,fallow")
+  
+  AddVar_Campaign("MyCampaign.nc4",
+                  Variable = list(Name=paste0('crid_',j*3-2),
+                                  Unit='Mapping',
+                                  missingValue=-99,
+                                  prec = 'float',
+                                  value= new.values
+                  )
+  )
+  
+  Edit_mapping_var("MyCampaign.nc4", paste0('crid_',j*3-2) , 'long_name', "maize,soybean,fallow")
+  
+  print(j)
+  
+}
+
+######## Cultivar id
+
+cultivar_list <- "?,Elgin_2.7,HiSoy2846_2.8,IA_2008_2.0,K283_2.0,Krucr_2.7,Pioneer_92M61_2.6,U01390224_2.5"
+
+new.values <- list()
+
+for (j in 6:num_years) {  # j is equal to the number of years
+  
+  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable[raster::values(MyVariable)==0] <- 2
+  MyVariable[raster::values(MyVariable)==-1] <- NA
+  MyVariable[is.na(MyVariable)] <- NA
+  
+  
+  
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",
+                                                                      MyVariable)[[1]])
+  
+  new.values2 <- rapply(new.values, function(x) ifelse(x==2,sample(2:8,200, replace = T),x),how = 'replace')
+  
+  AddVar_Campaign("MyCampaign.nc4",Variable = list(Name=paste0('cul_id_',j),
+                                                   Unit='Mapping',
+                                                   missingValue=-99,
+                                                   prec='float',
+                                                   value= new.values2)
+  )
+  
+  Edit_mapping_var("MyCampaign.nc4", paste0('cul_id_',j) , 'long_name', cultivar_list)
+  
+  print(j)
+  
+}
+###### Plant population
+
+for (j in 6:num_years) {
+  
+  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable[raster::values(MyVariable)==0] <- 2
+  MyVariable[raster::values(MyVariable)==-1] <- NA
+  MyVariable[is.na(MyVariable)] <- NA
+  
+  MyVariable[raster::values(MyVariable) == 1] <- 8
+  MyVariable[raster::values(MyVariable) == 2] <- 30
+  
+  
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",
+                                                                      MyVariable)[[1]])
+  
+  AddVar_Campaign("MyCampaign.nc4",
+                  Variable = list(Name=paste0('plpop_',j),
+                                  Unit='seeds/m2',
+                                  missingValue=-99,
+                                  value= new.values
+                  ),
+                  attr = list('long_name',"")
+  )
+  
+  print(j)
+}
+#--------------------------------Adding met
 new.values <-seq_along(prop$Scen) %>%
   purrr::map(~matrix(sample(c(1:9), prop$Count,TRUE), nrow = length(prop$Lat), ncol = length(prop$Lon)))
 
@@ -103,7 +211,6 @@ Edit_mapping_var (fname, 'file' , 'long_name', "met00000.met,met00001.met,met000
 
 
 ###### Fertilizer Amount
-num_years <- length(sim_years)
 
 
 
@@ -130,9 +237,6 @@ for (j in 1:num_years) {
 
 ############################################################################################
 ###### Planting Date and fertilizer date
-
-
-
 
 for (j in 1:num_years) {
   
@@ -171,7 +275,36 @@ for (j in 1:num_years) {
   print(j)
   
 }
+###### Harvesting and termination date
 
+for (j in 6:num_years) {
+  
+  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable[raster::values(MyVariable)==0] <- 2
+  MyVariable[raster::values(MyVariable)==-1] <- NA
+  
+  
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",MyVariable)[[1]])
+  
+  AddVar_Campaign("MyCampaign.nc4",Variable = list(Name=paste0('date_',4*j),
+                                                   Unit='Mapping',
+                                                   missingValue=-99,
+                                                   prec='float',
+                                                   value= new.values))
+  Edit_mapping_var('MyCampaign.nc4', paste0('date_',4*j), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
+                                                                             collapse = ','))
+  
+  
+  AddVar_Campaign("MyCampaign.nc4",Variable = list(Name=paste0('date_',4*j+1),
+                                                   Unit='Mapping',
+                                                   missingValue=-99,
+                                                   prec='float',
+                                                   value= new.values))
+  Edit_mapping_var('MyCampaign.nc4', paste0('date_',4*j+1), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
+                                                                               collapse = ','))
+  
+  print(j)
+}
 
 ############################################################################################
 ######## Water Fraction
