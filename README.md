@@ -10,5 +10,5 @@ Using `0-County_Calibration_Maize` we can specify a set of APSIM parameters and 
 
 
 #### Before running any large simulations, one needs to double check few different things:
-1)Each pixel needs to follow it's common rotation extracted from CDL. 
+1) Each pixel needs to follow it's common rotation extracted from CDL. 
 2) Each pixel needs to have correct values for calibrated crop parameters and planting date
