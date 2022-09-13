@@ -92,41 +92,44 @@ for (j in 6:num_years) {
   MyVariable[raster::values(MyVariable)==0] <- 2
   MyVariable[raster::values(MyVariable)==-1] <- 3
   MyVariable[is.na(MyVariable)] <- 3
-  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname,
                                                                       MyVariable)[[1]])
   
-  AddVar_Campaign("MyCampaign.nc4",
+  AddVar_Campaign(fname,
                   Variable = list(Name=paste0('crid_',j*3),
                                   Unit='Mapping',
                                   missingValue=-99,
                                   prec = 'float',
+                                  longname="",
                                   value= new.values
                   )
   )
   
-  Edit_mapping_var("MyCampaign.nc4", paste0('crid_',j*3) , 'long_name', "maize,soybean,fallow")
+  Edit_mapping_var(fname, paste0('crid_',j*3) , 'long_name', "maize,soybean,fallow")
   
-  AddVar_Campaign("MyCampaign.nc4",
+  AddVar_Campaign(fname,
                   Variable = list(Name=paste0('crid_',j*3-1),
                                   Unit='Mapping',
                                   missingValue=-99,
                                   prec = 'float',
+                                  longname="",
                                   value= new.values
                   )
   )
   
-  Edit_mapping_var("MyCampaign.nc4", paste0('crid_',j*3-1) , 'long_name', "maize,soybean,fallow")
+  Edit_mapping_var(fname, paste0('crid_',j*3-1) , 'long_name', "maize,soybean,fallow")
   
-  AddVar_Campaign("MyCampaign.nc4",
+  AddVar_Campaign(fname,
                   Variable = list(Name=paste0('crid_',j*3-2),
                                   Unit='Mapping',
                                   missingValue=-99,
                                   prec = 'float',
+                                  longname="",
                                   value= new.values
                   )
   )
   
-  Edit_mapping_var("MyCampaign.nc4", paste0('crid_',j*3-2) , 'long_name', "maize,soybean,fallow")
+  Edit_mapping_var(fname, paste0('crid_',j*3-2) , 'long_name', "maize,soybean,fallow")
   
   print(j)
   
@@ -147,19 +150,20 @@ for (j in 6:num_years) {  # j is equal to the number of years
   
   
   
-  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname,
                                                                       MyVariable)[[1]])
   
   new.values2 <- rapply(new.values, function(x) ifelse(x==2,sample(2:8,200, replace = T),x),how = 'replace')
   
-  AddVar_Campaign("MyCampaign.nc4",Variable = list(Name=paste0('cul_id_',j),
+  AddVar_Campaign(fname,Variable = list(Name=paste0('cul_id_',j),
                                                    Unit='Mapping',
                                                    missingValue=-99,
                                                    prec='float',
+                                                   longname="",
                                                    value= new.values2)
   )
   
-  Edit_mapping_var("MyCampaign.nc4", paste0('cul_id_',j) , 'long_name', cultivar_list)
+  Edit_mapping_var(fname, paste0('cul_id_',j) , 'long_name', cultivar_list)
   
   print(j)
   
@@ -177,13 +181,15 @@ for (j in 6:num_years) {
   MyVariable[raster::values(MyVariable) == 2] <- 30
   
   
-  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname,
                                                                       MyVariable)[[1]])
   
-  AddVar_Campaign("MyCampaign.nc4",
+  AddVar_Campaign(fname,
                   Variable = list(Name=paste0('plpop_',j),
                                   Unit='seeds/m2',
                                   missingValue=-99,
+                                  longname="",
+                                  prec='float',
                                   value= new.values
                   ),
                   attr = list('long_name',"")
@@ -238,7 +244,7 @@ for (j in 1:num_years) {
 ############################################################################################
 ###### Planting Date and fertilizer date
 
-for (j in 1:num_years) {
+for (j in 6:num_years) {
   
   pdate.param <- Allparams.df %>%
     filter(Year == sim_years[j])
@@ -284,23 +290,25 @@ for (j in 6:num_years) {
   MyVariable[raster::values(MyVariable)==-1] <- NA
   
   
-  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix("MyCampaign.nc4",MyVariable)[[1]])
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname,MyVariable)[[1]])
   
-  AddVar_Campaign("MyCampaign.nc4",Variable = list(Name=paste0('date_',4*j),
+  AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j),
                                                    Unit='Mapping',
                                                    missingValue=-99,
                                                    prec='float',
+                                                    longname="",
                                                    value= new.values))
-  Edit_mapping_var('MyCampaign.nc4', paste0('date_',4*j), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
+  Edit_mapping_var(fname, paste0('date_',4*j), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
                                                                              collapse = ','))
   
   
-  AddVar_Campaign("MyCampaign.nc4",Variable = list(Name=paste0('date_',4*j+1),
+  AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j+1),
                                                    Unit='Mapping',
                                                    missingValue=-99,
                                                    prec='float',
+                                                    longname="",
                                                    value= new.values))
-  Edit_mapping_var('MyCampaign.nc4', paste0('date_',4*j+1), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
+  Edit_mapping_var(fname, paste0('date_',4*j+1), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
                                                                                collapse = ','))
   
   print(j)
@@ -400,7 +408,7 @@ remove_var_campaign(fname, varnames=c('myvar'))
 #------------------------------- Creating the simulation
 ######################################################################################################
 #---- Param File
-tmp_param <- Read_param_template(file.path(getwd(), "Templates", "params.apsim.sample"))
+tmp_param <- Read_param_template(file.path(getwd(), "Templates", "params.apsim.sample_SDA"))
 tmp_param$ref_year <- min(sim_years)%>% as.integer()
 tmp_param$num_years <- length(sim_years)%>% as.integer()
 tmp_param$scen_years <- length(sim_years)%>% as.integer()
@@ -414,7 +422,7 @@ tmp_param$Pre_run_command <- "Rscript ../../SoilFixer.R"
 tmp_param$Post_run_command <- "Rscript ../../Replace_sql_files.R"
 
 #Modifying the campaign json file 
-tmp_camp <- Read_Campaign_template(file.path(getwd(), "Templates", "exp_template.json"))  # This is different from one that was used in the rotation exp.
+tmp_camp <- Read_Campaign_template(file.path(getwd(), "Templates", "exp_template_SDA.json"))  # This is different from one that was used in the rotation exp.
 tmp_camp$reporting_frequency <- "daily"
 
 # Point 1
