@@ -7,9 +7,9 @@ library(pSIMCampaignManager)
 setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
-county <- "lee"
+county <- "gallatin"
 sim_name <- paste0(state, "_", county,"_SDA")
-sim_years <- 2005:2020
+sim_years <- 2010:2020
 num_years <- length(sim_years)
 
 
@@ -86,9 +86,9 @@ for(param in c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate")) {
 
 ############################################################################################
 ######## Crop Rotation
-for (j in 6:num_years) {
+for (j in 1:num_years) {
   
-  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable <- Rot_Rasters[[j]]
   MyVariable[raster::values(MyVariable)==0] <- 2
   MyVariable[raster::values(MyVariable)==-1] <- 3
   MyVariable[is.na(MyVariable)] <- 3
@@ -141,9 +141,9 @@ cultivar_list <- "?,Elgin_2.7,HiSoy2846_2.8,IA_2008_2.0,K283_2.0,Krucr_2.7,Pione
 
 new.values <- list()
 
-for (j in 6:num_years) {  # j is equal to the number of years
+for (j in 1:num_years) {  # j is equal to the number of years
   
-  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable <- Rot_Rasters[[j]]
   MyVariable[raster::values(MyVariable)==0] <- 2
   MyVariable[raster::values(MyVariable)==-1] <- NA
   MyVariable[is.na(MyVariable)] <- NA
@@ -170,9 +170,9 @@ for (j in 6:num_years) {  # j is equal to the number of years
 }
 ###### Plant population
 
-for (j in 6:num_years) {
+for (j in 1:num_years) {
   
-  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable <- Rot_Rasters[[j]]
   MyVariable[raster::values(MyVariable)==0] <- 2
   MyVariable[raster::values(MyVariable)==-1] <- NA
   MyVariable[is.na(MyVariable)] <- NA
@@ -244,7 +244,7 @@ for (j in 1:num_years) {
 ############################################################################################
 ###### Planting Date and fertilizer date
 
-for (j in 6:num_years) {
+for (j in 1:num_years) {
   
   pdate.param <- Allparams.df %>%
     filter(Year == sim_years[j])
@@ -283,9 +283,9 @@ for (j in 6:num_years) {
 }
 ###### Harvesting and termination date
 
-for (j in 6:num_years) {
+for (j in 1:num_years) {
   
-  MyVariable <- Rot_Rasters[[j-5]]
+  MyVariable <- Rot_Rasters[[j]]
   MyVariable[raster::values(MyVariable)==0] <- 2
   MyVariable[raster::values(MyVariable)==-1] <- NA
   
@@ -298,7 +298,7 @@ for (j in 6:num_years) {
                                                    prec='float',
                                                     longname="",
                                                    value= new.values))
-  Edit_mapping_var(fname, paste0('date_',4*j), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
+  Edit_mapping_var(fname, paste0('date_',4*j), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j)+2009,'-10-15'))),
                                                                              collapse = ','))
   
   
@@ -308,7 +308,7 @@ for (j in 6:num_years) {
                                                    prec='float',
                                                     longname="",
                                                    value= new.values))
-  Edit_mapping_var(fname, paste0('date_',4*j+1), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j-5)+2009,'-10-15'))),
+  Edit_mapping_var(fname, paste0('date_',4*j+1), 'long_name', paste(gsub('-','',as.Date(sort(unique(unlist(new.values))),origin = paste0((j)+2009,'-10-15'))),
                                                                                collapse = ','))
   
   print(j)
@@ -413,7 +413,7 @@ tmp_param$ref_year <- min(sim_years)%>% as.integer()
 tmp_param$num_years <- length(sim_years)%>% as.integer()
 tmp_param$scen_years <- length(sim_years)%>% as.integer()
 tmp_param$scens <- 5L
-#tmp_param$tappinp$cultivarfile <- c(file.path(getwd(), "Templates", "Maize_template.xml"))
+tmp_param$tappinp$templatefile <- "template_SDA.apsim"
 tmp_param$delta <- "50,50"
 tmp_param$soils <- '/pysims/data/soils/Soils'
 tmp_param$weather <- "/pysims/data/clim/NewMet/"
@@ -424,9 +424,6 @@ tmp_param$Post_run_command <- "Rscript ../../Replace_sql_files.R"
 #Modifying the campaign json file 
 tmp_camp <- Read_Campaign_template(file.path(getwd(), "Templates", "exp_template_SDA.json"))  # This is different from one that was used in the rotation exp.
 tmp_camp$reporting_frequency <- "daily"
-
-# Point 1
-tmp_camp$crop_name <- c("maize") 
 
 # Point2 
 tmp_camp$fertilizer$crop <- "Maize"

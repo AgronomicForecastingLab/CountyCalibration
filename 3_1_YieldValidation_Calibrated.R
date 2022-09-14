@@ -9,7 +9,7 @@ setwd("/mnt/iccp_storage/Regional_Calibration/")
 state <- "illinois"
 county <- "lee"
 sim_name <- paste0(state, "_", county)
-sim_years <- 2005:2020
+sim_years <- 2010:2020
 
 
 pSIMS_extent<-read.csv(system.file("Utils", "pSIMS_extents.csv", package = "pSIMSSiteMaker"))
