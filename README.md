@@ -1,6 +1,6 @@
 # CountyCalibration
 
-The workflow is desinged in a way that all simulations from all files , will be genrated and placed in the simulation directory. Calibration outputs for emulator development will go to the `Outputs` directory and yield validation outputs will go the `YieldOutputs` dir. By the end of calibration (`2-Optimization.R`) each folder in the `Outputs` (for each county) will have 3 important files. `FinalGrid.RDS`, which has the grid of parameters and the desried target variable (NDVI max, etc), `Optim_Ready.RDS` has included the observed data as well into the `FinalGrid` and `Optim_results.RDS` will hold the optimized parameters for each pixel in the county. 
+The workflow is designed in a way that all simulations from all files , will be genrated and placed in the simulation directory. Calibration outputs for emulator development will go to the `Outputs` directory and yield validation outputs will go the `YieldOutputs` dir. By the end of calibration (`2-Optimization.R`) each folder in the `Outputs` (for each county) will have 3 important files. `FinalGrid.RDS`, which has the grid of parameters and the desired target variable (NDVI max, etc), `Optim_Ready.RDS` has included the observed data as well into the `FinalGrid` and `Optim_results.RDS` will hold the optimized parameters for each pixel in the county. 
 
 This directory contains all the necessary workflows for :
 #### 1) Generating simulations for emulator development across a county 
