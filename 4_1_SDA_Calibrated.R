@@ -433,22 +433,7 @@ tmp_camp$initial_condition$residue_type <- "Maize"
 tmp_camp$reset$date <- "01-jan"
 
 #-----Creating the operations for each crop separately
-tmp_camp$management$events  <- sim_years %>%
-  map(function(syear) {
-    Mangment_campaign_json_maker(
-      PlantingDate = as.Date(paste0(syear, "-05-03")),
-      HarvestDate = as.Date(paste0(syear, "-10-16")),
-      Crop = "maize",
-      Cultivar = "?",
-      # psims will ensemblize the cultivar
-      Population = "8",
-      Depth = "40",
-      RowSpacing = "762",
-      fert_date = as.Date(paste0(syear,"-05-03")),
-      fertamnt = "200",
-      fertdepth = "40"
-    ) 
-  }) %>%
+tmp_camp$management$events  %>%
   flatten()
 
 
