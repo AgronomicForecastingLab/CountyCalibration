@@ -7,7 +7,7 @@ library(pSIMCampaignManager)
 setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
-county <- "kendall"
+county <- "crawford"
 sim_name <- paste0(state, "_", county)
 sim_years <- 2010:2020
 
@@ -263,6 +263,8 @@ tile_number <- pSIMS_extent %>%
          xmin <= extent( trim(county_mask2))[1], xmax>= extent( trim(county_mask2))[2]
   ) %>%
   pull(name)
+
+print(tile_number)
 ######################################################################################################
 
 remove_var_campaign(fname, varnames=c('myvar'))

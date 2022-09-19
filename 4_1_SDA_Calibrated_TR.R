@@ -53,6 +53,7 @@ Allparams.df <- params %>%
 
 crop.params <- Allparams.df %>%
   filter(Year == Allparams.df$Year[1])
+
 #------------------------------------------ Adding the paramters to the Campaign
 #Create_Empty_Campaign(lat=unique(crop.params$lat),
 #                      lon=unique(crop.params$lon),
@@ -71,6 +72,7 @@ num_scen <- Get_Camp_dim(fname)$Scen
 count <- length(prop$Lat)*length(prop$Lon)
 Inspect_Camp(fname)
 
+#--------Calibrated parameters-------------------#
 for(param in c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate")) {
   print(param)
   
@@ -89,6 +91,79 @@ for(param in c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate")) {
                   attr = list('long_name',"")
   )
 }
+
+
+#--- add calibrated values of the 'tt_emerg_to_end_juv'
+
+tt_emerg_to_endjuv <- brick(Allparams.df%>%
+                        dplyr::select(lon,lat,tt_emerg_to_endjuv,Year)%>%
+                        split(.$Year)%>%purrr::map(function(x) rasterFromXYZ(x%>%dplyr::select(-Year))))
+
+MyVariable <- Rot_Rasters[[1]]
+
+tt_emerg_to_endjuv <- data.frame(rasterToPoints(MyVariable))%>%
+  left_join(as.data.frame(cbind(rasterToPoints(Rot_Rasters[[1]])[,c('x','y')],
+                                tt_emerg_to_endjuv = as.integer(raster::extract(tt_emerg_to_endjuv,
+                                                                                rasterToPoints(MyVariable)[,c('x','y')])))),
+            by=c('x','y'))%>%na.omit()
+
+nc <- nc_open(fname, write = T)
+TempFile.var <- raster::stack(fname, varname='tt_emerg_to_endjuv')
+TempFile.var[cellFromXY(TempFile.var,tt_emerg_to_endjuv[,c('x','y')])] <- tt_emerg_to_endjuv$tt_emerg_to_endjuv
+new.var <- seq_len(nlayers(TempFile.var)) %>% purrr::map(~t(raster::as.matrix(TempFile.var[[.x]],byrow=T))) %>% 
+  simplify2array ### transpose of the matrix is important
+ncvar_put(nc, 'tt_emerg_to_endjuv', new.var)
+nc_sync(nc)
+nc_close(nc)
+plot(GetCamp_VarMatrix(fname,'tt_emerg_to_endjuv')$Raster[[8]])
+
+#--- add calibrated values of the 'leaf_app_rate1'
+
+leaf_app_rate1 <- brick(Allparams.df%>%
+                              dplyr::select(lon,lat,leaf_app_rate1,Year)%>%
+                              split(.$Year)%>%purrr::map(function(x) rasterFromXYZ(x%>%dplyr::select(-Year))))
+
+MyVariable <- Rot_Rasters[[1]]
+
+leaf_app_rate1 <- data.frame(rasterToPoints(MyVariable))%>%
+  left_join(as.data.frame(cbind(rasterToPoints(Rot_Rasters[[1]])[,c('x','y')],
+                                leaf_app_rate1 = as.integer(raster::extract(leaf_app_rate1,
+                                                                                rasterToPoints(MyVariable)[,c('x','y')])))),
+            by=c('x','y'))%>%na.omit()
+
+nc <- nc_open(fname, write = T)
+TempFile.var <- raster::stack(fname, varname='leaf_app_rate1')
+TempFile.var[cellFromXY(TempFile.var,leaf_app_rate1[,c('x','y')])] <- leaf_app_rate1$leaf_app_rate1
+new.var <- seq_len(nlayers(TempFile.var)) %>% purrr::map(~t(raster::as.matrix(TempFile.var[[.x]],byrow=T))) %>% 
+  simplify2array ### transpose of the matrix is important
+ncvar_put(nc, 'leaf_app_rate1', new.var)
+nc_sync(nc)
+nc_close(nc)
+plot(GetCamp_VarMatrix(fname,'leaf_app_rate1')$Raster[[8]])
+
+#--- add calibrated values of the 'leaf_init_rate'
+
+leaf_init_rate <- brick(Allparams.df%>%
+                          dplyr::select(lon,lat,leaf_init_rate,Year)%>%
+                          split(.$Year)%>%purrr::map(function(x) rasterFromXYZ(x%>%dplyr::select(-Year))))
+
+MyVariable <- Rot_Rasters[[1]]
+
+leaf_init_rate <- data.frame(rasterToPoints(MyVariable))%>%
+  left_join(as.data.frame(cbind(rasterToPoints(Rot_Rasters[[1]])[,c('x','y')],
+                                leaf_init_rate = as.integer(raster::extract(leaf_init_rate,
+                                                                            rasterToPoints(MyVariable)[,c('x','y')])))),
+            by=c('x','y'))%>%na.omit()
+
+nc <- nc_open(fname, write = T)
+TempFile.var <- raster::stack(fname, varname='leaf_init_rate')
+TempFile.var[cellFromXY(TempFile.var,leaf_init_rate[,c('x','y')])] <- leaf_init_rate$leaf_init_rate
+new.var <- seq_len(nlayers(TempFile.var)) %>% purrr::map(~t(raster::as.matrix(TempFile.var[[.x]],byrow=T))) %>% 
+  simplify2array ### transpose of the matrix is important
+ncvar_put(nc, 'leaf_init_rate', new.var)
+nc_sync(nc)
+nc_close(nc)
+plot(GetCamp_VarMatrix(fname,'leaf_init_rate')$Raster[[8]])
 
 ############################################################################################
 ######## Crop Rotation
@@ -224,20 +299,22 @@ Edit_mapping_var (fname, 'file' , 'long_name', "met00000.met,met00001.met,met000
 
 ###### Fertilizer Amount
 
-
-
 for (j in 1:num_years) {
   
-  new.values <-seq_along(prop$Scen) %>%
-    purrr::map(~matrix(runif(prop$Count,180,220), nrow = length(prop$Lat), ncol = length(prop$Lon)))
+  MyVariable <- Rot_Rasters[[j]]
+  MyVariable[raster::values(MyVariable)==-1] <- 0
+  MyVariable[is.na(MyVariable)] <- 0
+  
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname,
+                                                                      MyVariable)[[1]])
+  
+  new.values2 <- rapply(new.values,function(x) ifelse(x==1,runif(200,180,220),x),how = 'replace')
   
   AddVar_Campaign(fname,
                   Variable = list(Name=paste0('feamn_',j),
                                   Unit='kg/ha',
                                   missingValue=-99,
-                                  value= new.values,
-                                  longname="",
-                                  prec="float"
+                                  value= new.values2
                   ),
                   attr = list('long_name',"")
   )
@@ -245,48 +322,122 @@ for (j in 1:num_years) {
   print(j)
 }
 
+GetCamp_VarMatrix(fname,'feamn_9')[[1]][,,5]
+plot(GetCamp_VarMatrix(fname,'feamn_9')$Raster[[5]])
 
 
 ############################################################################################
-###### Planting Date and fertilizer date
+###### Planting Date and fertilizer date-TR
 
 for (j in 1:num_years) {
   
-  pdate.param <- Allparams.df %>%
-    filter(Year == sim_years[j])
+  MyVariable <- Rot_Rasters[[j]]
   
-  mat.par <-  rasterFromXYZ(pdate.param[,c('lon','lat','pdate')]) %>% as.matrix() %>% round()
+  MyVariable[raster::values(MyVariable)==0] <- 2
+  MyVariable[raster::values(MyVariable)==-1] <- NA
+  #MyVariable[raster::values(MyVariable)==1] <- planting_dates$pdate
   
-  inds <- matrix(1:(nrow(mat.par)* ncol(mat.par)), 
-                 ncol= ncol(mat.par), nrow=  nrow(mat.par), byrow = FALSE)
   
-
-  new.values <-seq_along(prop$Scen) %>% purrr::map(~inds %>% t )
+  new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname,
+                                                                      MyVariable)[[1]])
+  
+  new.values2 <- rapply(new.values,function(x) ifelse(x==2,
+                                                      sample(136:151,200,replace = T),
+                                                      x),how = 'replace')
+  new.values2 <- rapply(new.values2,function(x) ifelse(x==1,
+                                                       sample(121:135,200,replace = T),
+                                                       x),how = 'replace')
   
   AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j-1),
                                         Unit='Mapping',
                                         missingValue=-99,
                                         prec='float',
-                                        longname="",
-                                        value= new.values))
-  
+                                        long.name="",
+                                        value= new.values2))
   Edit_mapping_var(fname, paste0('date_',4*j-1), 'long_name', paste(gsub('-','',
-                                                                         as.Date(mat.par %>% as.numeric(),origin = paste0(sim_years[j]-1,'-12-31'))),
+                                                                         as.Date(1:max(unique(unlist(new.values2)),na.rm = T),
+                                                                                 origin = paste0((j)+2008,'-12-31'))),
                                                                     collapse = ','))
   
   AddVar_Campaign(fname,Variable = list(Name=paste0('date_',4*j-2),
                                         Unit='Mapping',
                                         missingValue=-99,
                                         prec='float',
-                                        longname="",
-                                        value= new.values))
+                                        long.name="",
+                                        value= new.values2))
   Edit_mapping_var(fname, paste0('date_',4*j-2), 'long_name', paste(gsub('-','',
-                                                                         as.Date(mat.par %>% as.numeric(),origin = paste0(sim_years[j]-1,'-12-31'))),
+                                                                         as.Date(1:max(unique(unlist(new.values2)),na.rm = T),
+                                                                                 origin = paste0((j)+2008,'-12-31'))),
                                                                     collapse = ','))
   
   print(j)
   
 }
+
+Inspect_Camp(fname)
+plot(GetCamp_VarMatrix(fname,'date_38')$Raster[[5]])
+GetCamp_VarMatrix(fname,'date_15')[[1]][,,8]
+
+#-----This chink will replace the values of planting date with calibrated pdate-----#
+pdate_raster <- brick(Allparams.df%>%
+                        dplyr::select(lon,lat,pdate,Year)%>%
+                        split(.$Year)%>%purrr::map(function(x) rasterFromXYZ(x%>%dplyr::select(-Year))))
+
+
+#j <- 1
+for (j in 1:num_years) {
+  
+  MyVariable <- Rot_Rasters[[j]]
+  
+  planting_dates <- data.frame(rasterToPoints(MyVariable))%>%filter(crp==1)%>%
+    left_join(as.data.frame(cbind(rasterToPoints(MyVariable)[,c('x','y')],
+                                  pdate = as.integer(raster::extract(pdate_raster[[j]],
+                                                                     rasterToPoints(MyVariable)[,c('x','y')])))),
+              by=c('x','y'))%>%na.omit()
+  
+  nc <- nc_open(fname, write = T)
+  TempFile.var <- raster::stack(fname, varname=paste0('date_',4*j-1))
+  TempFile.var[cellFromXY(TempFile.var,planting_dates[,c('x','y')])] <- planting_dates$pdate
+  new.var <- seq_len(nlayers(TempFile.var)) %>% purrr::map(~t(raster::as.matrix(TempFile.var[[.x]],byrow=T))) %>% 
+    simplify2array ### transpose of the matrix is important
+  ncvar_put(nc, paste0('date_',4*j-1), new.var)
+  nc_sync(nc)
+  
+  TempFile.var <- raster::stack(fname, varname=paste0('date_',4*j-2))
+  TempFile.var[cellFromXY(TempFile.var,planting_dates[,c('x','y')])] <- planting_dates$pdate
+  new.var <- seq_len(nlayers(TempFile.var)) %>% purrr::map(~t(raster::as.matrix(TempFile.var[[.x]],byrow=T))) %>% 
+    simplify2array ### transpose of the matrix is important
+  ncvar_put(nc, paste0('date_',4*j-2), new.var)
+  nc_sync(nc)
+  nc_close(nc)
+  
+  print(j)
+  
+}
+
+#----------Adjust the longname later as well---------#
+for (j in 1:num_years) {
+  
+  Edit_mapping_var(fname, paste0('date_',4*j-1), 'long_name', paste(gsub('-','',
+                                                                                    as.Date(1:max(unlist(GetCamp_VarMatrix(fname,paste0('date_',4*j-1))$Matrix),na.rm=TRUE),
+                                                                                            origin = paste0((j)+2008,'-12-31'))),
+                                                                               collapse = ','))
+  
+  
+  Edit_mapping_var(fname, paste0('date_',4*j-2), 'long_name', paste(gsub('-','',
+                                                                                    as.Date(1:max(unlist(GetCamp_VarMatrix(fname,paste0('date_',4*j-2))$Matrix),na.rm=TRUE),
+                                                                                            origin = paste0((j)+2008,'-12-31'))),
+                                                                               collapse = ','))
+  
+  print(j)
+  
+  
+}
+
+Inspect_Camp(fname)
+plot(GetCamp_VarMatrix(fname,'date_39')$Raster[[5]])
+
+
 ###### Harvesting and termination date
 
 for (j in 1:num_years) {
@@ -418,7 +569,7 @@ tmp_param <- Read_param_template(file.path(getwd(), "Templates", "params.apsim.s
 tmp_param$ref_year <- min(sim_years)%>% as.integer()
 tmp_param$num_years <- length(sim_years)%>% as.integer()
 tmp_param$scen_years <- length(sim_years)%>% as.integer()
-tmp_param$scens <- 50L
+tmp_param$scens <- 60L
 tmp_param$tappinp$templatefile <- "template_SDA.apsim"
 tmp_param$delta <- "2.5,2.5"
 tmp_param$soils <- '/pysims/data/soils/Soils'
@@ -443,12 +594,16 @@ tmp_camp$management$events  %>%
   flatten()
 
 
-host <-
-  list(name = 'cc-login.campuscluster.illinois.edu',
-       user = 'hamzed',
-       tunnel = '~/tunnel/tunnel',
-       from= file.path(getwd(), "Simulations", sim_name),
-       to='/projects/aces/hamzed/psims/Data/sims')
+host <- list(name = 'cc-login.campuscluster.illinois.edu',
+             user = 'tsrai',
+             tunnel = '~/tunnel/tunnel',
+             from= file.path(getwd(), "Simulations", sim_name),
+             to='/scratch/users/tsrai/')
+#host <- list(name = 'cc-login.campuscluster.illinois.edu',
+#             user = 'tsrai',
+#             tunnel = '~/tunnel/tunnel',
+#             from= file.path(getwd(), "Simulations", sim_name),
+#             to='/projects/aces/hamzed/psims/Data/sims')
 
 #debugonce(pSIMS_Site_Make)
 

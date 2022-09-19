@@ -18,7 +18,7 @@ host <-
        from=paste0('/home/hamzed/pSIMS/'),
        to='/projects/aces/hamzed/psims/Data')
 
-outdir <- '/YieldOutputs'
+outdir <- '/Outputs'
 Var <- 'NDVI'
 #-----------------------------------------------------------------------------------
 #-------------------------------------------- Find the runs/dirs that starts with illinois and has sqlite3 files
@@ -36,7 +36,7 @@ Finished_runs
 #-----------------------------------------------------------------------------------
 # Remove the reduandant dirs
 # find . -type d -empty -delete
-walk(names(Finished_runs)[c(2, 4, 6, 8, 10, 12)], function(.x){
+walk(names(Finished_runs)[c(2)], function(.x){
   
   #Delete empty dirs
   pSIMSSiteMaker::remote.execute.cmd(host, paste0('find  ', .x ,' -type d -empty -delete'))
@@ -49,7 +49,7 @@ walk(names(Finished_runs)[c(2, 4, 6, 8, 10, 12)], function(.x){
     })
 
   subdirs %>%
-    walk (function(xx){
+    future_walk (function(xx){
       tmp_cmd<-paste0('find ',
                       xx,
                       " -type f  -iname '*.sqlite3' | zip ", file.path(xx, gsub("/","_", gsub(.x,"", xx))),"_RTM.zip -@")
@@ -59,20 +59,20 @@ walk(names(Finished_runs)[c(2, 4, 6, 8, 10, 12)], function(.x){
       #
       remote.copy.to(host, tmp_file, paste0(xx, "/ziper.sh"))
       remote.execute.cmd(host, paste0(". ", xx,"/ziper.sh"))
-    })
+    }, .progress = TRUE)
 
 })
 #-----------------------------------------------------------------------------------
 #---- find the zip files and bring them back---------
 #-----------------------------------------------------------------------------------
-walk(names(Finished_runs)[c( 2, 4, 6, 8, 10, 12)], function(.xx){
+walk(names(Finished_runs)[c(2)], function(.xx){
   # 
 
   paths_withruns_zip <- remote.execute.cmd(host,
                                            paste0('find ',.xx,' -type f -name "*.zip"'))
   
   dir.create(file.path(getwd(),outdir, basename(.xx)))
-  
+
   #Bring them back
   walk(paths_withruns_zip, function(ss){
 
@@ -81,23 +81,27 @@ walk(names(Finished_runs)[c( 2, 4, 6, 8, 10, 12)], function(.xx){
                      dst=file.path(getwd(), outdir, basename(.xx)),
                      delete = TRUE)
   })
-  
+
 #---------------
 #--- UNZIP all the outputs
 #----------------
+
   list.files(paste0(getwd(), paste0(outdir, "/"), basename(.xx)),".zip", full.names = TRUE, recursive = TRUE)%>%
     walk(~ unzip(.x, junkpaths=TRUE,
-                 exdir = file.path(getwd(),outdir, basename(.xx), gsub("_RTM","", tools::file_path_sans_ext(basename(.x)))%>%substr(2, 20))
+                 exdir = file.path(getwd(),outdir, basename(.xx),
+                                   gsub("_RTM","", tools::file_path_sans_ext(basename(.x)))%>%substr(2, 20))
                                    )
                  )
 
   
   #Bring experiment .json back
   walk(dirname(paths_withruns_zip), function(ss){
-    
+
     remote.copy.from(host=host,
                      src=file.path(ss, "experiment.json"),
-                     dst=file.path(getwd(),outdir, basename(.xx), gsub("/","_",gsub(.xx,"",ss)) %>% substr(2, 20),
+                     dst=file.path(getwd(),outdir, basename(.xx), gsub("/","_",gsub(paste0(.xx),"",ss)) %>%
+                                    # gsub("_illinois_crawford_", "", .) %>%
+                                     substr(2, 20),
                                    "experiment.json"),
                      delete = TRUE)
   })
@@ -110,7 +114,7 @@ list.files(paste0(getwd(), paste0(outdir, "/")),".zip", full.names = TRUE, recur
   walk(~ unlink(.x))
 #------------------------------------------------ AGGregate SQL files from ens to pixel level
 #-------------------------------------- Read SQLites
-list.dirs(file.path(getwd(), outdir), recursive = FALSE)%>%
+list.dirs(file.path(getwd(), outdir), recursive = FALSE)[c(5)]%>%
   walk(function(path.sim){
 
     print(path.sim)
@@ -126,7 +130,7 @@ list.dirs(file.path(getwd(), outdir), recursive = FALSE)%>%
             mytable <- dbReadTable(db, "Outputs") %>%
               dplyr::select(lon=longitude, lat=latitude, sim, yield, NDVI, CropName, day , year) %>%
               mutate(ens = basename(sqlfile),
-                     Pixel = gsub('/','_',gsub('/projects/aces/hamzed/psims/Data/sims/|illinois|lee|moultrie|gallatin','',sim))
+                     Pixel = gsub('/','_',gsub('/projects/aces/hamzed/psims/Data/sims/|illinois|boone|crawford','',sim))
               )%>%
               dplyr::select(-sim)
 
@@ -150,12 +154,12 @@ list.dirs(file.path(getwd(), outdir), recursive = FALSE)%>%
 #----------------------------------------------------------------------------------
 #----------------------------------- Making the final grid ---------------------------------
 #----------------------------------------------------------------------------------
-list.dirs("Outputs", recursive = FALSE)[2:3] %>%
+list.dirs("Outputs", recursive = FALSE)[c((5))] %>%
   map(function(ss){
   print(ss)
 
     # Reading results
-    tmpall <- list.files(ss, "output.RDS", recursive = TRUE, full.names = TRUE) %>%
+    tmpall <- list.files(ss, "*output.RDS", recursive = TRUE, full.names = TRUE) %>%
       future_map_dfr(~ readRDS(.x))
 
     outcounty <- tmpall %>%
@@ -194,11 +198,12 @@ list.dirs("Outputs", recursive = FALSE)[2:3] %>%
           dplyr::select(Year, PDOY, date, Ens) %>%
           mutate(Pixel=substr(gsub("_RTM","",strsplit(ss,'\\/')[[1]][c(3)]),1, 20)) 
         
-      })
-    
+      }, .progress = TRUE)
+
     Maize.df <- maizedates %>%
       left_join(crop.param, by='Ens') %>%
       dplyr::select(-date)
+
 
     #----- Joining to make the final grid for the emulator
     FGrid <- outcounty %>%
@@ -210,7 +215,7 @@ list.dirs("Outputs", recursive = FALSE)[2:3] %>%
 #-------------------------------- Preparing Obs-------------------------------- 
 #----------------------------------------------------------------------------------
 #----------------------------------------------------------------------------------
-list.dirs("Outputs", recursive = FALSE)[1] %>%
+list.dirs("Outputs", recursive = FALSE)%>%
   map(function(ss){
     print(ss)
     
@@ -225,10 +230,17 @@ list.dirs("Outputs", recursive = FALSE)[1] %>%
     ### Reading the observed data
     observed <- brick(file.path('NDVI', paste0(stringr::str_to_title(county),".nc"))
                       )
+    #make a raster template of the are simulated 
+    observed_Agg_temp <- raster(extent(grid[,c(2, 1)] %>% as.matrix()),
+                                ncol=length(unique(grid$lon)),
+                                nrow=length(unique(grid$lat)))
+
+    # Aggregate obs based on that
+    observed_Agg <- resample(observed, observed_Agg_temp, method="bilinear")
     
     ### Extract observed values from the points of simulation
     obs_raster <- rasterFromXYZ(cbind(grid[,c('lon','lat')],
-                                      raster::extract(observed, grid[,c('lon','lat')])),
+                                      raster::extract(observed_Agg, grid[,c('lon','lat')])),
                                 crs = '+proj=longlat +datum=WGS84 +no_defs')%>%
       rasterToPoints()%>% 
       as.data.frame()%>%
@@ -259,6 +271,8 @@ list.dirs("Outputs", recursive = FALSE)[1] %>%
         x$NewObsNDVI= phenex::modelValues(ndvi, method="DLogistic")@modelledValues #fitting the double logitic
         x
       }, .progress = TRUE)
+
+
     
     obs_NDVI <- raw_data%>%
       split(list(.$Pixel,.$year))%>%
@@ -269,10 +283,10 @@ list.dirs("Outputs", recursive = FALSE)[1] %>%
       rename(Date=date, Year=year) %>%
       mutate(Year= as.numeric(as.character(Year)))
 
-    
     comparison <- FullGrid%>%
       left_join(obs_NDVI%>%dplyr::select(-c(lon,lat), Pixel, Year, NewObsNDVI, Date),by=c('Pixel','Year'))%>%
       mutate(NDVIObsDay = lubridate::yday(Date))%>%
+      filter(NDVIObsDay < 275) %>% # peack is before Oct first
        mutate(date.diff=as.numeric(NDVIday-NDVIObsDay)) %>%
       na.omit()
     
