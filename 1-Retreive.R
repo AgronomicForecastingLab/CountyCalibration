@@ -273,6 +273,8 @@ list.dirs("Outputs", recursive = FALSE)%>%
       }, .progress = TRUE)
 
 
+
+    saveRDS(raw_data, file.path(ss, 'NDVI_denoised.RDS'))
     
     obs_NDVI <- raw_data%>%
       split(list(.$Pixel,.$year))%>%

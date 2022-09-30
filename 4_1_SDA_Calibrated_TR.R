@@ -37,6 +37,7 @@ Allparams.df <- params %>%
          leaf_app_rate1 = as.numeric(leaf_app_rate1),
          leaf_init_rate = as.numeric(leaf_init_rate), 
          pdate= as.numeric(pdate)) %>%
+  rename(pixel = `params[, 1]`)%>%
   tidyr::gather(Year, Yeareff, -pixel, -pdate, -tt_emerg_to_endjuv, -leaf_app_rate1, -leaf_init_rate) %>%
   split(.$Year) %>%
   map_dfr(function(one.year.param){
@@ -60,7 +61,7 @@ crop.params <- Allparams.df %>%
 #                      num_scen=1,
 #                      filename =fname)
 #-----Campaign extent comes from the rotation raster now
-# Cells were not equally placed with earlier code
+# In case cells were not equally placed with earlier code
 Create_Empty_Campaign(lat=unique(raster::xyFromCell(Rot_Rasters[[1]], 1:length(Rot_Rasters[[1]]))[,2]),
                       lon=unique(raster::xyFromCell(Rot_Rasters[[1]], 1:length(Rot_Rasters[[1]]))[,1]),
                       num_scen=1,
@@ -71,28 +72,46 @@ prop <- Inspect_Camp(fname)
 num_scen <- Get_Camp_dim(fname)$Scen
 count <- length(prop$Lat)*length(prop$Lon)
 Inspect_Camp(fname)
-
+summary(params)
 #--------Calibrated parameters-------------------#
-for(param in c("tt_emerg_to_endjuv","leaf_app_rate1","leaf_init_rate")) {
-  print(param)
-  
-  mat.par <-  rasterFromXYZ(crop.params[,c('lon','lat',param)]) %>% as.matrix()
 
-  new.values <-  seq_along(prop$Scen) %>% purrr::map(~mat.par %>% t )
+#mat.par <-  rasterFromXYZ(crop.params[,c('lon','lat',param)]) %>% as.matrix()
+#new.values <-  seq_along(prop$Scen) %>% purrr::map(~mat.par %>% t )
 
-  AddVar_Campaign(fname,
-                  Variable = list(Name=param,
+new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname, runif(Get_Camp_dim(fname)$Count, 200,450))[[1]])
+
+AddVar_Campaign(fname, Variable = list(Name='tt_emerg_to_endjuv',
                                   Unit="C/day",
                                   missingValue=-99,
                                   value= new.values,
                                   longname="",
-                                  prec="float"
-                  ),
-                  attr = list('long_name',"")
-  )
-}
+                                  prec="float"),
+                attr = list('long_name',""))
+  
+new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname, runif(Get_Camp_dim(fname)$Count, 40, 60))[[1]])
+  
+AddVar_Campaign(fname, Variable = list(Name='leaf_app_rate1',
+                                  Unit="C/day",
+                                  missingValue=-99,
+                                  value= new.values,
+                                  longname="",
+                                  prec="float"),
+                attr = list('long_name',""))
+  
+new.values <- purrr::map(seq_along(num_scen), ~Campaign_emptyMatrix(fname, runif(Get_Camp_dim(fname)$Count, 14,30))[[1]])
+
+AddVar_Campaign(fname, Variable = list(Name='leaf_init_rate',
+                                  Unit="C/day",
+                                  missingValue=-99,
+                                  value= new.values,
+                                  longname="",
+                                  prec="float"),
+                attr = list('long_name',""))
 
 
+plot(GetCamp_VarMatrix(fname,'tt_emerg_to_endjuv')$Raster[[5]])
+plot(GetCamp_VarMatrix(fname,'leaf_app_rate1')$Raster[[5]])
+plot(GetCamp_VarMatrix(fname,'leaf_init_rate')$Raster[[5]])
 #--- add calibrated values of the 'tt_emerg_to_end_juv'
 
 tt_emerg_to_endjuv <- brick(Allparams.df%>%
@@ -314,6 +333,8 @@ for (j in 1:num_years) {
                   Variable = list(Name=paste0('feamn_',j),
                                   Unit='kg/ha',
                                   missingValue=-99,
+                                  longname="",
+                                  prec='float',
                                   value= new.values2
                   ),
                   attr = list('long_name',"")
@@ -352,7 +373,7 @@ for (j in 1:num_years) {
                                         Unit='Mapping',
                                         missingValue=-99,
                                         prec='float',
-                                        long.name="",
+                                        longname="",
                                         value= new.values2))
   Edit_mapping_var(fname, paste0('date_',4*j-1), 'long_name', paste(gsub('-','',
                                                                          as.Date(1:max(unique(unlist(new.values2)),na.rm = T),
@@ -363,7 +384,7 @@ for (j in 1:num_years) {
                                         Unit='Mapping',
                                         missingValue=-99,
                                         prec='float',
-                                        long.name="",
+                                        longname="",
                                         value= new.values2))
   Edit_mapping_var(fname, paste0('date_',4*j-2), 'long_name', paste(gsub('-','',
                                                                          as.Date(1:max(unique(unlist(new.values2)),na.rm = T),
@@ -539,6 +560,7 @@ county_boundry <- sf::st_as_sf( maps::map('county', state, fill=TRUE, plot =FALS
 
 il_mask <- raster(file.path(getwd(), "Templates", 'crop_mask_IL.nc'))
 county_mask2 <- mask(il_mask,county_boundry)
+plot(county_mask2)
 
 writeRaster(
   county_mask2,
@@ -621,7 +643,7 @@ pSIMS_Site_Make(
   Param_template_Obj = tmp_param,
   Campaign_json_Obj = tmp_camp,
   APSIM_Cultivar_Path = c(file.path(getwd(), "Templates", 'Maize_template.xml'),
-                          system.file("templates", "Soybean_template.xml", package = "pSIMSSiteMaker"),
+                          file.path(getwd(), "Templates", 'Soybean_template.xml'),
                           file.path("Simulations", sim_name, 'mask.nc'),
                           file.path(getwd(), "Templates", 'SoilFixer.R'),
                           file.path(getwd(), "Templates", 'Replace_sql_files.R')),

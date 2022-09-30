@@ -22,8 +22,9 @@ Sim.Yields <- list.dirs("YieldOutputs", recursive = FALSE)%>%
 
     Allout <- list.dirs(ss, recursive = FALSE) %>%
       map_dfr(~readRDS(file.path(.x, paste0(basename(.x), "_output.RDS")))) %>%
-      filter(day >1) %>%
-      mutate(Pixel = gsub("__","", Pixel))
+      #filter(day >1) %>%
+      mutate(year = as.factor(year),
+             Pixel = gsub("__","", Pixel))
 
     Allout%>%
       filter(yield> 0) %>%
@@ -54,20 +55,20 @@ yields <- Obs_yields%>%
 
 
 AllYield <- Sim.Yields %>%
-  left_join(yields %>%
-              select(-commodity_desc, -statisticcat_desc, 
+  left_join(yields %>% mutate(year = as.factor(year)) %>%
+              dplyr::select(-commodity_desc, -statisticcat_desc, 
                      -unit_desc), by=c('year', 'County'='county_name'))
 
 
-AllYield%>%
+AllYield%>%filter(County=='gallatin')%>%
   ggplot(aes(year,YieldM ))+
   geom_pointrange(aes(ymax =YieldUL,  ymin =YieldLL, color=Scenario), position = position_dodge(width = 0.25))+
-  geom_line(aes(color=Scenario), position = position_dodge(width = 0.5))+
+  geom_line(aes(group=Scenario,color=Scenario), position = position_dodge(width = 0.25))+
   geom_point(aes(y= value_kg_ha_dry), size=3) +
-  geom_line(aes(y= value_kg_ha_dry)) +
+  geom_line(aes(y= value_kg_ha_dry,group=1)) +
   facet_wrap(~ County, ncol=1)+
   theme_gray(base_size = 18)+
-  scale_x_continuous(breaks = seq(2010,2020,1))+
+#  scale_x_continuous(breaks = seq(2010,2020,1))+
   scale_y_continuous(breaks = seq(0,12000,2000))+
   theme(legend.position = "top")
   

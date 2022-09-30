@@ -7,7 +7,7 @@ library(pSIMCampaignManager)
 setwd("/mnt/iccp_storage/Regional_Calibration/")
 
 state <- "illinois"
-county <- "crawford"
+county <- "williamson"
 sim_name <- paste0(state, "_", county)
 sim_years <- 2010:2020
 

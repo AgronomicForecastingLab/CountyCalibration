@@ -9,7 +9,7 @@ library(furrr)
 plan(multisession)
 setwd("/mnt/iccp_storage/Regional_Calibration")
 
-list.dirs("Outputs", recursive = FALSE)%>%
+list.dirs("Outputs", recursive = FALSE)[1]%>%
   future_map(possibly(
     function(ss){
       print(ss)
@@ -136,7 +136,7 @@ list.dirs("Outputs", recursive = FALSE)%>%
                             '2010','2011','2012','2013','2014','2015',
                             '2016','2017','2018','2019','2020')
       
-      params <-  cbind(params[,1], apply(params[2:16], 2, as.numeric) %>% as.data.frame())
+      params <-  cbind(Pixel = params[,1], apply(params[2:16], 2, as.numeric) %>% as.data.frame())
       
       saveRDS(list(comparison= comparison, obs_data = obs_data, date_emulator= date_emulator, ndvi_emulator = ndvi_emulator, params = params), file.path(ss, "Optim_results.RDS"))
     }
